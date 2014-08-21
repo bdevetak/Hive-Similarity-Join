@@ -14,6 +14,7 @@ use Math::Trig qw(great_circle_distance :pi);
 my $rho=6371;
 my $degToRad = pi / 180.0;
 
+# Simple example that calculates geo distances between cities
 my $job = Hive::SimilarityJoin::Runner->new({
 
     # PERF:
@@ -29,7 +30,7 @@ my $job = Hive::SimilarityJoin::Runner->new({
                     latitude,
                     longitude
                 FROM
-                    bp_city
+                    my_city_table
                 WHERE
                     cc1 = 'es'
             |,
@@ -42,7 +43,7 @@ my $job = Hive::SimilarityJoin::Runner->new({
                     latitude,
                     longitude
                 FROM
-                    bp_city
+                    my_city_table
                 WHERE
                     cc1 = 'pt'
             |,
