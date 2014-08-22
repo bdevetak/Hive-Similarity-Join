@@ -24,6 +24,7 @@ my $default_tmp_dir = '/tmp/simjoin_tmp_' . $ENV{USER};
 
 # CLASS METHODS
 sub new {
+
     my $class = shift;
 
     my $params = ref $_[0] eq 'HASH' ? shift : {@_};
@@ -33,11 +34,6 @@ sub new {
     $self->{config}->{tmp_dir} = $default_tmp_dir
         unless $params->{tmp_dir};
 
-    remove_tree($self->{config}->{tmp_dir});
-
-    make_path($self->{config}->{tmp_dir})
-        or die "Can not create temp directly $self->{config}->{tmp_dir}";
-
     $self->{config}->{reducer} ||= $0 ;
     $self->{config}->{reducer} = abs_path( $self->{config}->{reducer} );
 
@@ -45,7 +41,7 @@ sub new {
     my($filename, $lib_dir) = fileparse($abs_module_path);
 
     $self->{config}->{lib_dir} = $lib_dir; # <- needed to copy modules to distributed cache
-    
+
     $self->{config}->{bucket_size} ||= 5;
 
     return bless $self, __PACKAGE__;
@@ -59,6 +55,11 @@ sub run {
     if ($ARGV[0] and $ARGV[0] eq 'reduce') {
         return $self->reduce( @_ );
     }
+
+    remove_tree($self->{config}->{tmp_dir});
+
+    make_path($self->{config}->{tmp_dir})
+        or die "Can not create temp directly $self->{config}->{tmp_dir}";
 
     my $tmp_dir = $self->{config}->{tmp_dir};
 
@@ -225,7 +226,6 @@ FROM (
 
 }
 
-# reduce
 sub reduce {
     my $self = shift;
 
@@ -269,32 +269,46 @@ sub _load_dataset {
 
 }
 
-# get_top_N_similar_records
 sub get_top_N_similar_records {
     my ($self, $row, $reference_dataset) = @_; 
 
-    my @bucket_buffer = (); 
+    my $last_index = $self->{config}->{bucket_size} - 1;
 
+    my @bucket_buffer = ();
+    my @sorted;
     foreach my $reference_record (@$reference_dataset) {
+
+        # should not compare item to itself
+        next if ( $row->[0] eq $reference_record->[0] );
+
         # similarity_record => [id1, id2, similarity || distance]
         my $similarity_record = main::calculate_similarity(
             $row, $reference_record
         );
 
-        push @bucket_buffer, $similarity_record
-            if $similarity_record;
-    }   
+        next unless $similarity_record;
 
-    # sorting order is ascending so we get top most similar
-    # pairs, that is pairs with minimal distance
-    my @sorted = sort { $a->[2] <=> $b->[2] } @bucket_buffer;
-    if (@sorted and $sorted[0] and $sorted[0][0] == $sorted[0][1]) {
-        shift @sorted; # <- should not compare item to itself
-    }   
-    my $last_index = $self->{config}->{bucket_size} - 1;
-    my @final_bucket = grep { $_ } @sorted[0..$last_index];
+        # maintain priority queue
+        if (scalar @bucket_buffer < $self->{config}->{bucket_size}) {
+            push @bucket_buffer, $similarity_record;
+            # sorting order is ascending so we get top most similar
+            # pairs, that is pairs with minimal distance
+            @sorted = sort { $a->[2] <=> $b->[2] } @bucket_buffer;
+        }
+        else {
+            # if last element in the queue has lower similarity score
+            # (larger distance) than the current element, replace it
+            # with current element, and re-sort the queue
+            if ($sorted[$#sorted]->[2] > $similarity_record->[2]) {
+                pop @sorted;
+                push @sorted, $similarity_record;
+                @sorted = sort { $a->[2] <=> $b->[2] } @sorted;
+            }
+        }
 
-    return \@final_bucket;
+    }
+
+    return \@sorted;;
 }
 
 1;
