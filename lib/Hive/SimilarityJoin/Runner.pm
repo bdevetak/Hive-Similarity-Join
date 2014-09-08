@@ -282,7 +282,7 @@ sub get_top_N_similar_records {
         next if ( $row->[0] eq $reference_record->[0] );
 
         # similarity_record => [id1, id2, similarity || distance]
-        my $similarity_record = main::calculate_similarity(
+        my $similarity_record = main::similarity_distance(
             $row, $reference_record
         );
 
@@ -312,3 +312,129 @@ sub get_top_N_similar_records {
 }
 
 1;
+
+__END__
+
+=encoding utf8
+
+=head1 NAME
+
+Hive::SimilarityJoin::Runner - Perl module for doing similarity joins on Hive.
+
+=head1 SYNOPSIS
+
+In the main script file:
+
+    # provide similarity_distance function that will be used to
+    # calculate distance between rows during similarity join
+    sub similarity_distance {
+        my ($row_a, $row_b) = @_;
+
+        my ($id_a,attribute_a_1,...,attribute_a_N) = @$row_a; # <- from big (streamed) table
+        my ($id_b,attribute_b_1,...,attribute_b_N) = @$row_b; # <- from small (cached) table
+
+        my $distance;
+        # ... do your calc
+
+        return [$id_a, $id_b, $distance];
+    }
+
+    # if not installed on hadoop data nodes, use from local folder
+    use lib "lib/Hive/SimilarityJoin";
+    use lib ".";
+
+    use Runner;
+
+    # create similarity join job
+    my $job = Hive::SimilarityJoin::Runner->new({
+
+        # PERF:
+        nr_reducers => 100,
+
+        # IN:
+        dataset_info => {
+
+            main_dataset => {
+                hql => q|
+                    SELECT
+                        id,
+                        attribute_1,...,attribute_N
+                    FROM
+                        big_table
+                |,
+            },
+
+            # smaller table should fit in Hadoop distributed cache
+            reference_data => {
+                hql => q|
+                    SELECT
+                        id,
+                        attribute_1,...,attribute_N
+                    FROM
+                        small_table
+                |,
+            },
+
+        },
+
+        # specify N for Top-N bucket:
+        bucket_size => 10,
+
+        # OUT:
+        out_info => {
+            out_dir  => '/tmp/simjoin_out_' . $ENV{USER},
+            out_file => 'simjoin_result.tsv',
+        },
+
+    });
+
+    # run
+    $job->run();
+
+=head1 VERSION
+
+Current version: 0.001
+
+=head1 AUTHOR
+
+bdevetak - Bosko Devetak (cpan:BDEVETAK) <bosko.devetak@gmail.com>
+
+=head1 CONTRIBUTORS
+
+theMage, C<<  <cpan:NEVES> >>, <mailto:themage@magick-source.net>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2014 the Hive::SimilarityJoin L</AUTHOR> and L</CONTRIBUTORS>
+as listed above.
+
+=head1 LICENSE
+
+This library is free software and may be distributed under the same terms
+as perl itself. See L<http://dev.perl.org/licenses/>.
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+=cut
+

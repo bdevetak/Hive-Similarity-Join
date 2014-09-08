@@ -32,7 +32,7 @@ my $job = Hive::SimilarityJoin::Runner->new({
                 FROM
                     my_city_table
                 WHERE
-                    cc1 = 'es'
+                    cc1 = 'nl'
             |,
         },
 
@@ -45,7 +45,7 @@ my $job = Hive::SimilarityJoin::Runner->new({
                 FROM
                     my_city_table
                 WHERE
-                    cc1 = 'pt'
+                    cc1 = 'nl'
             |,
         },
 
@@ -63,7 +63,7 @@ my $job = Hive::SimilarityJoin::Runner->new({
 
 $job->run();
 
-sub calculate_similarity {
+sub similarity_distance {
     my ($row, $ref_row) = @_;
     my (
       $id_1,
@@ -93,8 +93,6 @@ sub calculate_similarity {
       pi/2 - $lat_2_radians,
       $rho
     );  
-
-    return if $geo_distance > 20;
 
     return [$id_1,$id_2, $geo_distance];
 }
