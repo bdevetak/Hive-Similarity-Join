@@ -3,7 +3,7 @@ package Hive::SimilarityJoin::Runner;
 use strict;
 use warnings;
 
-use 5.010;
+use Time::HiRes qw(time);
 
 my $ONREDUCE;
 BEGIN { $ONREDUCE = ($ARGV[0] and $ARGV[0] eq 'reduce'); }
@@ -103,7 +103,7 @@ sub run {
                   $ref_dataset_info->{hql} .
                   "\"";
 
-            say "Going to run shell command => " . $shell_command;
+            print "Going to run shell command => " . $shell_command . "\n";
         }
 
         my $result = run_forked(
@@ -118,7 +118,7 @@ sub run {
         $ref_success = !$result->{exit_code};
 
     } or do {
-            say "Hive threw errors: $!";
+            print "Hive threw errors: $!" . "\n";
             exit 1;
     };
 
@@ -146,7 +146,7 @@ sub run {
                 . "--hiveconf nr_reducers=$number_of_reducers "
                 . "-f $self->{config}->{hql_file_path}"
             ;
-            say "Going to run shell command => " . $shell_command;
+            print "Going to run shell command => " . $shell_command . "\n";
         }
 
         my $result = run_forked(
@@ -161,7 +161,7 @@ sub run {
         $success = !$result->{exit_code};
 
     } or do {
-            say "Hive threw errors: $!";
+            print "Hive threw errors: $!" . "\n";
             exit 1;
     };
 }
@@ -175,22 +175,28 @@ sub _generate_hql_file {
 
     my $tmp_dir = $config->{tmp_dir};
 
-    my $reducer = basename( $self->{config}->{reducer} );
+    my $main_script = basename( $self->{config}->{reducer} );
 
     my $lib_dir = $config->{lib_dir};
+    my $runner = "$lib_dir/Runner.pm";
+
+    my $reducer_file = "simjoinrunner.$$." . time . ".pl";
+
+    my $reducer_abs_path = "$tmp_dir/$reducer_file";
+
+    _generate_reducer($main_script, $runner, $reducer_abs_path);
 
     my $hql_src = <<"---HQL---";
 set mapred.reduce.tasks=\${hiveconf:nr_reducers};
 
-ADD FILE $lib_dir/Runner.pm;
+ADD FILE $reducer_abs_path;
 
-ADD FILE $self->{config}->{reducer};
 ADD FILE $tmp_dir/\${hiveconf:auxiliary_dataset_file};
 
 SELECT
     TRANSFORM ( * )
 
-    USING "/usr/bin/perl $reducer reduce \${hiveconf:auxiliary_dataset_file}"
+    USING "/usr/bin/perl $reducer_file reduce \${hiveconf:auxiliary_dataset_file}"
 
     AS (
         id,
@@ -282,7 +288,7 @@ sub get_top_N_similar_records {
         next if ( $row->[0] eq $reference_record->[0] );
 
         # similarity_record => [id1, id2, similarity || distance]
-        my $similarity_record = main::similarity_distance(
+        my $similarity_record = main::calculate_similarity(
             $row, $reference_record
         );
 
@@ -309,6 +315,26 @@ sub get_top_N_similar_records {
     }
 
     return \@sorted;;
+}
+
+sub _generate_reducer {
+    my ($main_abs_path, $runner_abs_path, $reducer_abs_path) = @_;
+
+    my $shell_command = "cat '$main_abs_path' '$runner_abs_path'"
+                      . ' | '
+                      . "sed '/use[ ]*Hive::SimilarityJoin::Runner/d'"
+                      . ' > '
+                      . $reducer_abs_path
+    ;
+
+    my $success;
+    eval {
+        my $result = run_forked($shell_command);
+        $success = !$result->{exit_code};
+    } or do {
+        print "Could not generate reducer: $!" . "\n";
+        exit 1;
+    };
 }
 
 1;
@@ -339,11 +365,7 @@ In the main script file:
         return [$id_a, $id_b, $distance];
     }
 
-    # if not installed on hadoop data nodes, use from local folder
-    use lib "lib/Hive/SimilarityJoin";
-    use lib ".";
-
-    use Runner;
+    use Hive::SimilarityJoin::Runner;
 
     # create similarity join job
     my $job = Hive::SimilarityJoin::Runner->new({

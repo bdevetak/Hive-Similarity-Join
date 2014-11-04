@@ -4,10 +4,7 @@ use warnings;
 
 use 5.010;
 
-use lib "lib/Hive/SimilarityJoin";
-use lib ".";
-
-use Runner;
+use Hive::SimilarityJoin::Runner;
 
 use Math::Trig qw(great_circle_distance :pi);
 
