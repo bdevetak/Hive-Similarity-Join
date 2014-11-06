@@ -288,7 +288,7 @@ sub get_top_N_similar_records {
         next if ( $row->[0] eq $reference_record->[0] );
 
         # similarity_record => [id1, id2, similarity || distance]
-        my $similarity_record = main::calculate_similarity(
+        my $similarity_record = main::similarity_distance(
             $row, $reference_record
         );
 
